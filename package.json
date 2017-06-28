@@ -15,7 +15,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/node-facebook/facebook-node-sdk.git"
+    "url": "https://github.com/TryLately/facebook-node-sdk.git"
   },
   "main": "./lib/index.js",
   "scripts": {
