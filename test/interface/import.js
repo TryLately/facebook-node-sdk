@@ -27,7 +27,7 @@ describe('import', function() {
 
 		it('FB.api should work without `this`', function(done) {
 			nock('https://graph.facebook.com:443')
-				.get('/v2.3/4')
+				.get('/v2.5/4')
 				.reply(200, {
 					id: '4'
 				});
@@ -48,7 +48,7 @@ describe('import', function() {
 
 		it('FB.api should work without `this`', function(done) {
 			nock('https://graph.facebook.com:443')
-				.get('/v2.3/4')
+				.get('/v2.5/4')
 				.reply(200, {
 					id: '4'
 				});
@@ -62,7 +62,7 @@ describe('import', function() {
 	});
 
 	describe("import {FacebookApiException} from 'fb';", function() {
-		it('should expose the FacebookApiException eror typei', function() {
+		it('should expose the FacebookApiException error type', function() {
 			expect(FacebookApiExceptionImport).to.equal(FacebookApiException);
 		});
 	});

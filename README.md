@@ -1,4 +1,4 @@
-# NodeJS Library for Facebook [![Build Status](https://travis-ci.org/node-facebook/facebook-node-sdk.svg?branch=master)](https://travis-ci.org/node-facebook/facebook-node-sdk)
+# NodeJS Library for Facebook [![Build Status](https://travis-ci.org/node-facebook/facebook-node-sdk.svg?branch=master)](https://travis-ci.org/node-facebook/facebook-node-sdk) [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fnode-facebook%2Ffacebook-node-sdk.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fnode-facebook%2Ffacebook-node-sdk?ref=badge_shield)
 
 With facebook-node-sdk you can now easily write the same code and share between your server (nodejs) and the client ([Facebook Javascript SDK](https://developers.facebook.com/docs/reference/javascript/)).
 
@@ -15,15 +15,14 @@ npm install fb
 ```
 
 ```js
-// Using require() in ES5
-var FB = require('fb');
+// Using ES2015 import
+import FB, {FacebookApiException} from 'fb';
 
 // Using require() in ES2015
-var {FB, FacebookApiException} = require('fb');
+const {FB, FacebookApiException} = require('fb');
 
-// Using ES2015 import through Babel
-import FB from 'fb'; // or,
-import {FB, FacebookApiException} from 'fb';
+// Using require() in ES5
+var FB = require('fb').default;
 ```
 
 ## Library usage
@@ -31,17 +30,17 @@ import {FB, FacebookApiException} from 'fb';
 Libraries can isolate themselves from the options belonging to the default `FB` by creating an instance of the `Facebook` class.
 
 ```js
-// ES5
-var FB = require('fb'),
-    fb = new FB.Facebook(options);
+// ES2015 modules
+import {Facebook, FacebookApiException} from 'fb';
+const fb = new Facebook(options);
 
 // ES2015 w/ require()
-var {Facebook, FacebookApiException} = require('fb'),
-    fb = new Facebook(options);
+const {Facebook, FacebookApiException} = require('fb'),
+const fb = new Facebook(options);
 
-// ES2015 w/ import through Babel
-import {Facebook, FacebookApiException} from 'fb';
-var fb = new Facebook(options);
+// ES5
+var Facebook = require('fb').Facebook,
+    fb = new Facebook(options);
 ```
 
 ## Multi-app usage
@@ -110,7 +109,7 @@ FB.api('me/photos', 'post', { source: fs.createReadStream('my-vacation.jpg'), ca
   console.log('Post Id: ' + res.post_id);
 });
 
-FB.api('me/photos', 'post', { source: { value: photoBuffer, options: { contentType: 'image/jpeg' } }, caption: 'My vacation' }, function (res) {
+FB.api('me/photos', 'post', { source: { value: photoBuffer, options: { filename: 'upload.jpg', contentType: 'image/jpeg' } }, caption: 'My vacation' }, function (res) {
   if(!res || res.error) {
     console.log(!res ? 'error occurred' : res.error);
     return;
@@ -433,6 +432,7 @@ The existing options are:
 * `'appSecret'` string representing the Facebook application secret.
 * `'version'` [default=`'v2.3'`] string representing the Facebook api version to use. Defaults to the oldest available version of the api.
 * `'proxy'` string representing an HTTP proxy to be used. Support proxy Auth with Basic Auth, embedding the auth info in the uri: 'http://[username:password@]proxy[:port]' (parameters in brackets are optional).
+* `'agent'` a custom `https.Agent` to use for the request.
 * `'timeout'` integer number of milliseconds to wait for a response. Requests that have not received a response in *X* ms. If set to null or 0 no timeout will exist. On timeout an error object will be returned to the api callback with the error code of `'ETIMEDOUT'` (example below).
 * `'scope'` string representing the Facebook scope to use in `getLoginUrl`.
 * `'redirectUri'` string representing the Facebook redirect_uri to use in `getLoginUrl`.
@@ -537,6 +537,10 @@ FB.api('/me', function (res) {
 });
 ```
 
+### Debugging
+
+If you need to submit a bug report to Facebook you can run your application with `DEBUG=fb:req,fb:fbdebug` and request information will be output to your console along with `x-fb-trace-id`, `x-fb-rev`, and `x-fb-debug` headers you can include.
+
 ## Promise based interface
 
 *This is a non-standard api and does not exist in the official client side FB JS SDK.*
@@ -544,19 +548,6 @@ FB.api('/me', function (res) {
 When `FB.api` is called without a callback it will instead return a Promise that will either resolve with the same response as `FB.api` or be rejected with a `FacebookApiException` error.
 
 ```js
-FB.api('4')
-    .then(function(response) {
-        console.log(response);
-    })
-    .catch(function(error) {
-        if(error.response.error.code === 'ETIMEDOUT') {
-            console.log('request timeout');
-        }
-        else {
-            console.log('error', error.message);
-        }
-    });
-
 // In an async function
 async function example() {
     try {
@@ -572,22 +563,32 @@ async function example() {
         }
     }
 }
+
+// Using plain promise callbacks
+FB.api('4')
+    .then((response) => {
+        console.log(response);
+    })
+    .catch((error) => {
+        if(error.response.error.code === 'ETIMEDOUT') {
+            console.log('request timeout');
+        }
+        else {
+            console.log('error', error.message);
+        }
+    });
 ```
 
-The promise implementation used can be controlled using [any-promise](https://www.npmjs.com/package/any-promise)'s register interface or by setting the `Promise` option.
+The promises returned are native Promises. However you can override the promise implementation used with a 3rd party library by setting the `Promise` option.
 
 ```js
-// any-promise
-import 'any-promise/register/bluebird';
-import FB from 'fb';
-let response = await FB.api('4');
-
 // Promise option
 import FB from 'fb';
+
 FB.options({
     Promise: require('bluebird')
 });
-let response = await fb.api('4');
+let response = await FB.api('4');
 
 // Promise option in a library
 import {Facebook} from 'fb';
@@ -631,7 +632,7 @@ npm install step
 ### FB.api with Step
 
 ```js
-var FB      = require('fb'),
+var FB      = require('fb').default,
     Step    = require('step');
 
 Step(
@@ -657,7 +658,7 @@ Step(
 Simplified version of facebook-node-sdk async callbacks using `FB.napi`.
 
 ```js
-var FB      = require('fb'),
+var FB      = require('fb').default,
     Step    = require('step');
 
 Step(
@@ -670,3 +671,6 @@ Step(
     }
 );
 ```
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fnode-facebook%2Ffacebook-node-sdk.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fnode-facebook%2Ffacebook-node-sdk?ref=badge_large)

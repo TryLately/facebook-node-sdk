@@ -1,6 +1,19 @@
 Changelog
 =========
 
+## 3.0.0
+
+* Added `getAppUsage` API
+* New minimum API version `v2.5` (v2.4 is no longer available)
+* Debug headers are now logged with DEBUG=fb:fbdebug
+* Log messages to stderr using console.warn instead of console.log
+* **BREAKING CHANGE**: Switched from the `request` library to `needle`
+* **BREAKING CHANGE**: Passing invalid methods or arguments to `FB.api` now throws a TypeError instead of logging and returning undefined
+* Use of the [function-bind operator](https://github.com/tc39/proposal-bind-operator) has been removed
+* **BREAKING CHANGE**: Raised the minimum supported version of Node to `6.x`
+* **BREAKING CHANGE**: `any-promise` has been removed, native promises are now returned by default. If you wish to use a 3rd party promise library like `bluebird` you must explicitly set the `Promise` option instead of relying on `any-promise`'s behaviour
+* * **BREAKING CHANGE**: CommonJS `require('fb')` must now use the `.default` or `.FB` export
+
 ## 2.0.0
 
 * **BREAKING CHANGE**: Dropped support for FQL and Legacy REST Api

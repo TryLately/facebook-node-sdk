@@ -1,7 +1,7 @@
 'use strict';
 var nock = require('nock'),
 	expect = require('chai').expect,
-	FB = require('../..'),
+	FB = require('../..').default,
 	notError = require('../_supports/notError'),
 	omit = require('lodash.omit'),
 	defaultOptions = omit(FB.options(), 'appId');
@@ -23,7 +23,7 @@ describe('FB.api', function() {
 		describe("FB.api('', 'post', { batch: [ { method: 'get', relative_url: '4' }, { method: 'get', relative_url: 'me/friends?limit=50' } ], cb)", function() {
 			beforeEach(function() {
 				nock('https://graph.facebook.com:443')
-					.post('/v2.3/', 'batch=%5B%7B%22method%22%3A%22get%22%2C%22relative_url%22%3A%224%22%7D%2C%7B%22method%22%3A%22get%22%2C%22relative_url%22%3A%22me%2Ffriends%3Flimit%3D50%22%7D%5D')
+					.post('/v2.5/', 'batch=%5B%7B%22method%22%3A%22get%22%2C%22relative_url%22%3A%224%22%7D%2C%7B%22method%22%3A%22get%22%2C%22relative_url%22%3A%22me%2Ffriends%3Flimit%3D50%22%7D%5D')
 					.reply(200, [
 						{
 							code: 200,

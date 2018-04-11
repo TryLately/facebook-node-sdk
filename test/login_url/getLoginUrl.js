@@ -1,7 +1,7 @@
 'use strict';
 var nock = require('nock'),
 	expect = require('chai').expect,
-	FB = require('../..'),
+	FB = require('../..').default,
 	omit = require('lodash.omit'),
 	defaultOptions = omit(FB.options(), 'appId');
 
@@ -17,7 +17,7 @@ afterEach(function() {
 });
 
 describe('FB.getLoginUrl', function() {
-	var base = 'https://www.facebook.com/v2.3/dialog/oauth';
+	var base = 'https://www.facebook.com/v2.5/dialog/oauth';
 	describe('when no options are set', function() {
 		describe('FB.getLoginUrl({}})', function() {
 			it('should throw', function() {

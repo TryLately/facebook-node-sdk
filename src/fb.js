@@ -1,8 +1,8 @@
 'use strict';
-import Promise from 'any-promise';
 import {autobind} from 'core-decorators';
 import debug from 'debug';
-import request from 'request';
+import FormData from 'form-data';
+import needle from 'needle';
 import URL from 'url';
 import QS from 'querystring';
 import crypto from 'crypto';
@@ -11,12 +11,13 @@ import FacebookApiException from './FacebookApiException';
 var {version} = require('../package.json'),
 	debugReq = debug('fb:req'),
 	debugSig = debug('fb:sig'),
+	debugFbDebug = debug('fb:fbdebug'),
 	METHODS = ['get', 'post', 'delete', 'put'],
-	toString = Object.prototype.toString,
-	has = Object.prototype.hasOwnProperty,
+	isString = (self, ...args) => Object.prototype.toString.call(self, ...args) === '[object String]',
+	has = (self, ...args) => Object.prototype.hasOwnProperty.call(self, ...args),
 	log = function(d) {
 		// todo
-		console.log(d); // eslint-disable-line no-console
+		console.warn(d); // eslint-disable-line no-console
 	},
 	defaultOptions = Object.assign(Object.create(null), {
 		Promise: Promise,
@@ -25,12 +26,13 @@ var {version} = require('../package.json'),
 		appSecret: null,
 		appSecretProof: null,
 		beta: false,
-		version: 'v2.3',
+		version: 'v2.5',
 		timeout: null,
 		scope: null,
 		redirectUri: null,
 		proxy: null,
-		userAgent: `thuzi_nodejssdk/${version}`
+		userAgent: `thuzi_nodejssdk/${version}`,
+		agent: null,
 	}),
 	emptyRateLimit = Object.assign(Object.create(null), {
 		callCount: 0,
@@ -38,16 +40,16 @@ var {version} = require('../package.json'),
 		totalCPUTime: 0
 	}),
 	isValidOption = function(key) {
-		return defaultOptions::has(key);
+		return has(defaultOptions, key);
 	},
 	parseResponseHeaderAppUsage = function(header) {
-		if ( !header::has('x-app-usage') ) {
+		if ( !has(header, 'x-app-usage') ) {
 			return null;
 		}
 		return JSON.parse(header['x-app-usage']);
 	},
 	parseResponseHeaderPageUsage = function(header) {
-		if ( !header::has('x-page-usage') ) {
+		if ( !has(header, 'x-page-usage') ) {
 			return null;
 		}
 		return JSON.parse(header['x-page-usage']);
@@ -61,6 +63,12 @@ var {version} = require('../package.json'),
 	},
 	stringifyParams = function(params) {
 		var data = {};
+
+		// https://developers.facebook.com/bugs/1925316137705574/
+		// fields=[] as json is not officialy supported, however the README has made people mistakenly do so
+		if ( Array.isArray(params.fields) ) {
+			log(`The fields param should be a comma separated list, not an array, try changing it to: ${JSON.stringify(params.fields)}.join(',')`);
+		}
 
 		for ( let key in params ) {
 			let value = params[key];
@@ -76,16 +84,16 @@ var {version} = require('../package.json'),
 	},
 	postParamData = function(params) {
 		var data = {},
-			isFormData = false;
+			multipart = false;
 
 		for ( let key in params ) {
 			let value = params[key];
 			if ( value && typeof value !== 'string' ) {
-				let val = typeof value === 'object' && value::has('value') && value::has('options') ? value.value : value;
+				let val = typeof value === 'object' && has(value, 'value') && has(value, 'options') ? value.value : value;
 				if ( Buffer.isBuffer(val) ) {
-					isFormData = true;
+					multipart = true;
 				} else if ( typeof val.read === 'function' && typeof val.pipe === 'function' && val.readable ) {
-					isFormData = true;
+					multipart = true;
 				} else {
 					value = JSON.stringify(value);
 				}
@@ -95,7 +103,20 @@ var {version} = require('../package.json'),
 			}
 		}
 
-		return {[isFormData ? 'formData' : 'form']: data};
+		if ( multipart ) {
+			const formData = new FormData();
+			for (const key in data) {
+				const value = data[key];
+				if ( typeof value === 'object' && has(value, 'value') && has(value, 'options') ) {
+					formData.append(key, value.value, value.options);
+				} else {
+					formData.append(key, value);
+				}
+			}
+			const formHeaders = formData.getHeaders();
+			return {data: formData, formHeaders};
+		}
+		return {data};
 	},
 	getAppSecretProof = function(accessToken, appSecret) {
 		var hmac = crypto.createHmac('sha256', appSecret);
@@ -285,8 +306,7 @@ class Facebook {
 			} else if ( type === 'object' && !params ) {
 				params = next;
 			} else {
-				log('Invalid argument passed to FB.api(): ' + next);
-				return;
+				throw new TypeError('Invalid argument passed to FB.api(): ' + next);
 			}
 			next = args.shift();
 		}
@@ -300,8 +320,7 @@ class Facebook {
 		}
 
 		if ( METHODS.indexOf(method) < 0 ) {
-			log('Invalid method passed to FB.api(): ' + method);
-			return;
+			throw new TypeError('Invalid method passed to FB.api(): ' + method);
 		}
 
 		this[oauthRequest](path, method, params, cb);
@@ -317,12 +336,12 @@ class Facebook {
 	 * @param cb {Function}     the callback function to handle the response
 	 */
 	[oauthRequest](path, method, params, cb) {
-		var uri,
+		let uri,
 			parsedUri,
 			parsedQuery,
-			formOptions,
-			requestOptions,
-			pool;
+			postData,
+			formHeaders,
+			requestOptions;
 
 		cb = cb || function() {};
 		if ( !params.access_token ) {
@@ -356,7 +375,7 @@ class Facebook {
 				}
 			}
 
-			formOptions = postParamData(params);
+			({data: postData, formHeaders} = postParamData(params));
 		} else {
 			for ( let key in params ) {
 				parsedQuery[key] = params[key];
@@ -366,34 +385,40 @@ class Facebook {
 		parsedUri.search = stringifyParams(parsedQuery);
 		uri = URL.format(parsedUri);
 
-		pool = {maxSockets: this.options('maxSockets') || Number(process.env.MAX_SOCKETS) || 5};
-		requestOptions = {
-			method,
-			uri,
-			...formOptions,
-			pool
-		};
+		requestOptions = {parse: false};
 		if ( this.options('proxy') ) {
 			requestOptions['proxy'] = this.options('proxy');
 		}
 		if ( this.options('timeout') ) {
-			requestOptions['timeout'] = this.options('timeout');
+			requestOptions['response_timeout'] = this.options('timeout');
 		}
 		if ( this.options('userAgent') ) {
 			requestOptions['headers'] = {
-				'User-Agent': this.options('userAgent')
+				'User-Agent': this.options('userAgent'),
+				...formHeaders
 			};
+		}
+		if ( this.options('agent') ) {
+			requestOptions['agent'] = this.options('agent');
 		}
 
 		debugReq(method.toUpperCase() + ' ' + uri);
-		request(requestOptions,
-			(error, response, body) => {
+		needle.request(
+			method,
+			uri,
+			postData,
+			requestOptions,
+			(error, response) => {
 				if ( error !== null ) {
-					if ( error === Object(error) && error::has('error') ) {
+					if ( error === Object(error) && has(error, 'error') ) {
 						return cb(error);
 					}
 					return cb({error});
 				}
+
+				debugFbDebug(`x-fb-trace-id: ${response.headers['x-fb-trace-id']}`);
+				debugFbDebug(`x-fb-rev: ${response.headers['x-fb-rev']}`);
+				debugFbDebug(`x-fb-debug: ${response.headers['x-fb-debug']}`);
 
 				let appUsage = parseResponseHeaderAppUsage(response.headers);
 				if ( appUsage !== null ) {
@@ -411,7 +436,7 @@ class Facebook {
 
 				let json;
 				try {
-					json = JSON.parse(body);
+					json = JSON.parse(response.body);
 				} catch (ex) {
 					// sometimes FB is has API errors that return HTML and a message
 					// of "Sorry, something went wrong". These are infrequent and unpredictable but
@@ -482,7 +507,7 @@ class Facebook {
 			return;
 		}
 
-		if ( !(envelope && envelope::has('algorithm') && envelope.algorithm.toUpperCase() === 'HMAC-SHA256') ) {
+		if (!(envelope && has(envelope, 'algorithm') && envelope.algorithm.toUpperCase() === 'HMAC-SHA256') ) {
 			debugSig(envelope.algorithm + ' is not a supported algorithm, must be one of [HMAC-SHA256]');
 			return;
 		}
@@ -554,11 +579,11 @@ class Facebook {
 		if ( !keyOrOptions ) {
 			return o;
 		}
-		if ( keyOrOptions::toString() === '[object String]' ) {
+		if ( isString(keyOrOptions) ) {
 			return isValidOption(keyOrOptions) && keyOrOptions in o ? o[keyOrOptions] : null;
 		}
 		for ( let key in o ) {
-			if ( isValidOption(key) && key in o && keyOrOptions::has(key) ) {
+			if ( isValidOption(key) && key in o && has(keyOrOptions, key) ) {
 				o[key] = keyOrOptions[key];
 				switch (key) {
 				case 'appSecret':
